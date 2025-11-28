@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgomp1 \
     wget \
+    build-essential \
+    cmake \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
