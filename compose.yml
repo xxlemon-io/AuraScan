@@ -1,10 +1,10 @@
 
 services:
-  paddleocr-api:
+  ocr-api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: paddleocr_api
+    container_name: tesseract_ocr_api
     networks:
       - ocr-network
     expose:
@@ -16,11 +16,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 30s
 
   webapp:
     image: nginx:alpine
-    container_name: paddleocr_ui
+    container_name: tesseract_ocr_ui
     volumes:
       - ./index.html:/usr/share/nginx/html/index.html
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
@@ -29,7 +29,7 @@ services:
     networks:
       - ocr-network
     depends_on:
-      paddleocr-api:
+      ocr-api:
         condition: service_started
     restart: always
 

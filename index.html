@@ -130,7 +130,7 @@
                         <h1 class="text-4xl font-extrabold tracking-tight text-slate-900"><span
                                 class="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-600">AuraScan</span>
                         </h1>
-                        <p class="text-slate-500 font-medium">PaddleOCR 驱动的高精度文字识别工具</p>
+                        <p class="text-slate-500 font-medium">Tesseract 驱动的高精度文字识别工具</p>
                     </div>
 
                     <!-- 上传卡片 -->
@@ -214,8 +214,8 @@
                     <!-- 顶部栏 -->
                     <div class="px-6 py-4 border-b border-white/50 flex justify-between items-center bg-white/30">
                         <div class="flex items-center gap-2">
-                            <div class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
-                            <span class="font-bold text-slate-700">识别完成</span>
+                            <div id="status-indicator" class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+                            <span id="status-text" class="font-bold text-slate-700">识别完成</span>
                         </div>
                         <div class="flex items-center gap-2">
                             <button id="reset-btn"
@@ -333,7 +333,9 @@
                 copyBtn: document.getElementById('copy-btn'),
                 toast: document.getElementById('toast'),
                 toastMessageElement: document.getElementById('toast-message'),
-                toastIconContainer: document.getElementById('toast-icon-container')
+                toastIconContainer: document.getElementById('toast-icon-container'),
+                statusIndicator: document.getElementById('status-indicator'),
+                statusText: document.getElementById('status-text')
             };
 
             // ==================== 状态管理 ====================
@@ -554,40 +556,59 @@
                     formData.append('images', state.currentFile);
 
                     try {
-                        let data;
-                        try {
-                            const response = await fetch(CONFIG.API_URL, {
-                                method: 'POST',
-                                body: formData
-                            });
+                        const response = await fetch(CONFIG.API_URL, {
+                            method: 'POST',
+                            body: formData
+                        });
 
-                            if (!response.ok) {
-                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        if (!response.ok) {
+                            let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                            try {
+                                const errorData = await response.json();
+                                if (errorData.detail) {
+                                    errorMessage = errorData.detail;
+                                } else if (errorData.message) {
+                                    errorMessage = errorData.message;
+                                }
+                            } catch (e) {
+                                // If response is not JSON, use status text
+                                const errorText = await response.text();
+                                if (errorText) {
+                                    errorMessage = errorText;
+                                }
                             }
-                            data = await response.json();
-                        } catch (err) {
-                            console.log("API 请求失败，使用模拟数据:", err.message);
-                            await new Promise(r => setTimeout(r, 1500));
-                            data = {
-                                "msg": "Success",
-                                "results": [
-                                    [
-                                        { "confidence": 0.99, "text": "PaddleOCR High Precision", "text_region": [[0, 0], [100, 0], [100, 20], [0, 20]] },
-                                        { "confidence": 0.96, "text": "现代 UI 设计示例", "text_region": [[0, 30], [200, 30], [200, 50], [0, 50]] },
-                                        { "confidence": 0.92, "text": "Docker Container Ready", "text_region": [[0, 60], [200, 60], [200, 80], [0, 80]] },
-                                        { "confidence": 0.89, "text": "识别结果仅供参考", "text_region": [[0, 90], [200, 90], [200, 110], [0, 110]] }
-                                    ]
-                                ]
-                            };
+                            throw new Error(errorMessage);
                         }
 
+                        const data = await response.json();
                         this.displayResults(data);
                         utils.activateSlideState();
                         toast.success('识别完成');
 
                     } catch (error) {
                         console.error('OCR 识别错误:', error);
-                        toast.error('识别失败: ' + error.message);
+                        const errorMessage = error.message || '未知错误';
+                        
+                        // Show detailed error in toast
+                        let userMessage = '识别失败';
+                        if (errorMessage.includes('502')) {
+                            userMessage = '服务暂时不可用 (502 Bad Gateway)，请稍后重试';
+                        } else if (errorMessage.includes('503')) {
+                            userMessage = '服务不可用 (503 Service Unavailable)，请稍后重试';
+                        } else if (errorMessage.includes('500')) {
+                            userMessage = '服务器内部错误 (500)，请检查服务状态';
+                        } else if (errorMessage.includes('NetworkError') || errorMessage.includes('Failed to fetch')) {
+                            userMessage = '网络连接失败，请检查网络连接';
+                        } else if (errorMessage.includes('timeout')) {
+                            userMessage = '请求超时，请稍后重试';
+                        } else {
+                            userMessage = `识别失败: ${errorMessage}`;
+                        }
+                        
+                        toast.error(userMessage);
+                        
+                        // Display error in result panel
+                        this.displayError(errorMessage);
                     } finally {
                         this.setLoading(false);
                     }
@@ -606,8 +627,12 @@
                     }
 
                     elements.textOutput.style.opacity = '0';
+                    elements.textOutput.style.color = ''; // Reset color for successful results
                     elements.textOutput.textContent = rawText;
                     elements.jsonOutput.textContent = JSON.stringify(data, null, 2);
+
+                    // 设置成功状态
+                    this.setStatus('success');
 
                     utils.showRightPanel();
                     elements.resultCard.classList.remove('hidden');
@@ -629,6 +654,51 @@
                                 });
                             }
                         }, 300);
+                    }
+                },
+
+                displayError(errorMessage) {
+                    const errorText = `错误信息:\n${errorMessage}\n\n请检查:\n1. 服务是否正常运行\n2. 网络连接是否正常\n3. 图片格式是否支持`;
+                    
+                    elements.textOutput.style.opacity = '0';
+                    elements.textOutput.textContent = errorText;
+                    elements.textOutput.style.color = '#ef4444';
+                    elements.jsonOutput.textContent = JSON.stringify({ 
+                        error: true, 
+                        message: errorMessage,
+                        timestamp: new Date().toISOString()
+                    }, null, 2);
+
+                    // 设置失败状态
+                    this.setStatus('error');
+
+                    utils.showRightPanel();
+                    elements.resultCard.classList.remove('hidden');
+
+                    setTimeout(() => {
+                        elements.textOutput.style.transition = 'opacity 0.5s';
+                        elements.textOutput.style.opacity = '1';
+                    }, 100);
+
+                    // Reset text color after 5 seconds
+                    setTimeout(() => {
+                        elements.textOutput.style.color = '';
+                    }, 5000);
+                },
+
+                setStatus(status) {
+                    if (!elements.statusIndicator || !elements.statusText) return;
+
+                    if (status === 'success') {
+                        // 成功状态：绿色
+                        elements.statusIndicator.className = 'w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]';
+                        elements.statusText.textContent = '识别完成';
+                        elements.statusText.className = 'font-bold text-slate-700';
+                    } else if (status === 'error') {
+                        // 失败状态：红色
+                        elements.statusIndicator.className = 'w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]';
+                        elements.statusText.textContent = '识别失败';
+                        elements.statusText.className = 'font-bold text-red-600';
                     }
                 },
 

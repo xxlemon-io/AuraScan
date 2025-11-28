@@ -1,14 +1,15 @@
 # AuraScan
 
-基于 PaddleOCR 的现代化 OCR 文字识别应用，提供简洁美观的 Web 界面。
+基于 Tesseract OCR 的现代化 OCR 文字识别应用，提供简洁美观的 Web 界面。
 
 ## 特性
 
-- 🚀 基于 PaddleOCR Hub Serving 模式
+- 🚀 基于 Tesseract OCR 引擎
 - 🎨 现代化 UI 设计（玻璃拟态风格）
 - 🔒 安全的内部网络架构（仅前端端口暴露）
 - 📱 响应式设计，支持桌面和移动端
 - 🖼️ 支持拖拽、粘贴、点击上传图片
+- 🌏 支持中文和英文识别
 
 ## 快速开始
 
@@ -25,7 +26,7 @@ docker-compose up -d
 
 ### 访问应用
 
-打开浏览器访问：`http://localhost:8080`
+打开浏览器访问：`http://localhost:54811`
 
 ### 停止服务
 
@@ -36,15 +37,15 @@ docker-compose down
 ## 架构说明
 
 ```
-宿主机:8080 (仅此端口暴露)
+宿主机:54811 (仅此端口暴露)
     ↓
 Nginx (webapp)
     ├─ 静态文件: / → index.html
-    └─ API 代理: /api/ → paddleocr-api:8000 (内部网络)
+    └─ API 代理: /api/ → ocr-api:8000 (内部网络)
 ```
 
-- **前端服务** (`webapp`): 暴露 `8080` 端口，提供 Web 界面
-- **API 服务** (`paddleocr-api`): 仅内部访问，通过 Nginx 反向代理
+- **前端服务** (`webapp`): 暴露 `54811` 端口，提供 Web 界面
+- **API 服务** (`ocr-api`): 仅内部访问，通过 Nginx 反向代理
 
 ## API 使用
 
@@ -57,7 +58,7 @@ Nginx (webapp)
 ### 请求示例
 
 ```bash
-curl -X POST http://localhost:8080/api/predict/ocr_system \
+curl -X POST http://localhost:54811/api/predict/ocr_system \
   -F "images=@test_image.jpg"
 ```
 
@@ -80,34 +81,36 @@ curl -X POST http://localhost:8080/api/predict/ocr_system \
 
 ## 配置说明
 
-### 修改 OCR 模型
+### 修改 OCR 语言
 
-编辑 `compose.yml` 中的 `command` 参数：
+Tesseract 支持多种语言识别。默认配置为中文（简体）和英文。
 
-```yaml
-command: hub serving start -m ch_pp-ocrv3 -p 8000
+如需修改语言，编辑 `app.py` 中的 `lang` 参数：
+
+```python
+ocr_data = pytesseract.image_to_data(
+    image,
+    lang='chi_sim+eng',  # 修改为所需语言代码
+    ...
+)
 ```
 
-可用模型：
-- `ch_pp-ocrv3`: 中文 OCR 模型 v3（默认）
-- `ch_pp-ocrv2`: 中文 OCR 模型 v2
-- `en_pp-ocrv3`: 英文 OCR 模型 v3
+常用语言代码：
+- `chi_sim`: 中文（简体）
+- `chi_tra`: 中文（繁体）
+- `eng`: 英文
+- `jpn`: 日文
+- `kor`: 韩文
 
-### GPU 支持
+多个语言用 `+` 连接，如 `chi_sim+eng+jpn`。
 
-如需使用 GPU，在 `paddleocr-api` 服务中添加：
+### 查看可用语言
 
-```yaml
-deploy:
-  resources:
-    reservations:
-      devices:
-        - driver: nvidia
-          count: 1
-          capabilities: [gpu]
+在容器内运行：
+
+```bash
+docker-compose exec ocr-api tesseract --list-langs
 ```
-
-并在 `command` 中添加 `--use_gpu true`。
 
 ## 常见问题
 
@@ -115,10 +118,10 @@ deploy:
 
 ```bash
 # 检查端口占用
-netstat -ano | findstr :8080
+netstat -ano | findstr :54811
 
 # 查看日志
-docker-compose logs paddleocr-api
+docker-compose logs ocr-api
 docker-compose logs webapp
 ```
 
@@ -132,19 +135,29 @@ docker-compose logs webapp
 
 - 确认图片格式支持（JPG、PNG、BMP）
 - 检查图片是否包含清晰可识别的文本
+- 确认所需语言包已安装（默认包含中文和英文）
+
+### 中文识别效果不佳
+
+- 确保图片清晰，文字对比度高
+- 尝试调整图片大小和分辨率
+- 检查是否安装了中文语言包：`tesseract --list-langs | grep chi_sim`
 
 ## 文件结构
 
 ```
-OCRapp/
+AuraScan/
 ├── compose.yml          # Docker Compose 配置
+├── Dockerfile           # API 服务镜像构建文件
 ├── nginx.conf           # Nginx 反向代理配置
 ├── index.html           # 前端页面
+├── app.py               # FastAPI 后端服务
+├── requirements.txt     # Python 依赖
 └── README.md            # 本文件
 ```
 
 ## 参考资源
 
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract)
+- [pytesseract](https://github.com/madmaze/pytesseract)
 - [Docker Compose](https://docs.docker.com/compose/)
-
