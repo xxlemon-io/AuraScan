@@ -1,24 +1,18 @@
 
 services:
   paddleocr-api:
-    image: paddlecloud/paddleocr:2.6-cpu-013870
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: paddleocr_api
-    # PaddleOCR Hub Serving 启动命令
-    # 根据官方文档：先安装 Hub Serving 模块，然后启动服务
-    entrypoint: ["/bin/bash", "-c"]
-    command: >
-      cd /PaddleOCR &&
-      hub install deploy/hubserving/ocr_system/ &&
-      hub serving start -m ocr_system -p 8000
     networks:
       - ocr-network
     expose:
       - "8000"
     restart: always
-    # 添加健康检查
-    # 使用 curl 检查服务根路径是否响应
+    # 健康检查
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
