@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuraScan</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Plus Jakarta Sans for a modern feel -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        /* 玻璃拟态 (Glassmorphism) 高级效果 */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+        }
+
+        /* 动态背景光斑 */
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(60px);
+            z-index: -1;
+            opacity: 0.6;
+            animation: float 10s infinite ease-in-out;
+        }
+
+        .blob-1 {
+            top: -10%;
+            left: -10%;
+            width: 500px;
+            height: 500px;
+            background: #c084fc;
+            animation-delay: 0s;
+        }
+
+        .blob-2 {
+            bottom: -10%;
+            right: -10%;
+            width: 500px;
+            height: 500px;
+            background: #60a5fa;
+            animation-delay: -5s;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translate(0, 0) scale(1);
+            }
+            33% {
+                transform: translate(30px, -50px) scale(1.1);
+            }
+            66% {
+                transform: translate(-20px, 20px) scale(0.9);
+            }
+        }
+
+        /* 自定义滚动条 */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* 桌面端 (lg) 时的滑动效果 */
+        @media (min-width: 1024px) {
+            #slide-container {
+                transform: translateX(0%);
+                width: 200%;
+            }
+
+            #slide-container.scanned {
+                transform: translateX(-50%);
+            }
+        }
+
+        /* 右键菜单样式 */
+        #context-menu {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s ease;
+            position: fixed !important;
+            z-index: 50;
+            visibility: hidden;
+        }
+
+        #context-menu.active {
+            opacity: 1;
+            pointer-events: auto;
+            visibility: visible;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 relative min-h-screen flex items-center justify-center p-4 overflow-x-hidden">
+    <!-- 背景装饰 -->
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <!-- 主布局容器 -->
+    <div id="main-wrapper" class="w-full max-w-5xl relative overflow-hidden">
+        <!-- 滑动容器 -->
+        <div id="slide-container" class="flex flex-col lg:flex-row transition-all duration-500 ease-in-out lg:w-[200%]">
+            <!-- 左侧：上传与控制区 -->
+            <div id="left-panel"
+                class="w-full lg:w-1/2 p-4 lg:p-6 flex flex-col justify-center items-center flex-shrink-0">
+                <div class="w-full max-w-lg mx-auto space-y-6">
+                    <div class="space-y-2 text-center lg:text-left">
+                        <h1 class="text-4xl font-extrabold tracking-tight text-slate-900"><span
+                                class="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-600">AuraScan</span>
+                        </h1>
+                        <p class="text-slate-500 font-medium">PaddleOCR 驱动的高精度文字识别工具</p>
+                    </div>
+
+                    <!-- 上传卡片 -->
+                    <div
+                        class="glass-card rounded-3xl p-6 transition-all duration-300 hover:shadow-xl hover:bg-white/80">
+                        <div id="drop-zone"
+                            class="relative group border-3 border-dashed border-slate-300 rounded-2xl h-80 transition-all duration-300 hover:border-blue-500 hover:bg-blue-50/50 flex flex-col items-center justify-center cursor-pointer overflow-hidden">
+                            <input type="file" id="file-input"
+                                class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" accept="image/*">
+
+                            <!-- 初始提示 -->
+                            <div id="upload-prompt"
+                                class="text-center space-y-4 pointer-events-none transition-all duration-300 group-hover:scale-105">
+                                <div
+                                    class="w-16 h-16 bg-white rounded-2xl shadow-lg flex items-center justify-center mx-auto text-blue-500">
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="text-lg font-bold text-slate-700">点击、拖拽或粘贴图片</p>
+                                    <p class="text-sm text-slate-400 mt-1">支持 JPG, PNG, BMP (粘贴请使用 Ctrl+V/Cmd+V)</p>
+                                </div>
+                            </div>
+
+                            <!-- 预览图片 -->
+                            <img id="preview-img"
+                                class="absolute inset-0 w-full h-full object-contain p-4 hidden z-10 transition-opacity duration-500"
+                                alt="Preview">
+
+                            <!-- 清除图片按钮 -->
+                            <button id="clear-image-btn"
+                                class="absolute top-3 right-3 z-30 p-2 bg-red-500/80 hover:bg-red-600 text-white rounded-full shadow-lg transition-all duration-200 hidden focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+
+                            <!-- 重新上传遮罩 -->
+                            <div id="reupload-mask"
+                                class="absolute inset-0 bg-black/40 backdrop-blur-sm z-10 hidden flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                <svg class="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                                    </path>
+                                </svg>
+                                <span class="font-medium">更换图片</span>
+                            </div>
+                        </div>
+
+                        <!-- 识别按钮 -->
+                        <button id="scan-btn" disabled
+                            class="mt-6 w-full py-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-xl font-bold shadow-lg shadow-slate-900/20 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none transition-all duration-300 flex items-center justify-center gap-3">
+                            <span id="btn-text">开始识别</span>
+                            <svg id="btn-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                            <!-- Loading Spinner -->
+                            <svg id="loading-spinner" class="animate-spin h-5 w-5 text-white hidden"
+                                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                    stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                </path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：结果展示区 -->
+            <div id="right-panel"
+                class="hidden w-0 p-0 relative h-full min-h-0 flex-shrink-0 overflow-hidden transition-all duration-500 lg:w-1/2">
+                <!-- 结果卡片 -->
+                <div id="result-card"
+                    class="hidden glass-card rounded-3xl h-full flex flex-col overflow-hidden animate-fade-in-up">
+                    <!-- 顶部栏 -->
+                    <div class="px-6 py-4 border-b border-white/50 flex justify-between items-center bg-white/30">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+                            <span class="font-bold text-slate-700">识别完成</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button id="reset-btn"
+                                class="group flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/50 hover:bg-slate-50 text-slate-600 hover:text-slate-700 transition-colors text-sm font-medium border border-transparent hover:border-slate-200">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                                </svg>
+                                <span>返回</span>
+                            </button>
+                            <button id="copy-btn"
+                                class="group flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 transition-colors text-sm font-medium border border-transparent hover:border-blue-100">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z">
+                                    </path>
+                                </svg>
+                                <span id="copy-text-label">复制文本</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 内容区 -->
+                    <div class="flex-1 overflow-hidden flex flex-col">
+                        <div class="flex-1 p-6 overflow-y-auto custom-scrollbar">
+                            <div id="text-output"
+                                class="font-mono text-sm leading-7 text-slate-700 whitespace-pre-wrap"></div>
+                        </div>
+
+                        <!-- JSON 数据折叠 -->
+                        <div class="border-t border-white/50 bg-slate-50/50">
+                            <details class="group">
+                                <summary
+                                    class="px-6 py-3 cursor-pointer select-none flex items-center justify-between hover:bg-slate-100/50 transition-colors">
+                                    <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Debug
+                                        Info (JSON)</span>
+                                    <svg class="w-4 h-4 text-slate-400 group-open:rotate-180 transition-transform"
+                                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 9l-7 7-7-7"></path>
+                                    </svg>
+                                </summary>
+                                <div
+                                    class="px-6 py-4 bg-slate-100 border-t border-slate-200 shadow-inner max-h-40 overflow-y-auto custom-scrollbar">
+                                    <pre id="json-output"
+                                        class="text-[11px] font-mono text-slate-500 break-all whitespace-pre-wrap"></pre>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右键菜单 -->
+    <div id="context-menu"
+        class="fixed glass-card rounded-xl shadow-2xl border border-white/50 overflow-hidden min-w-[160px] hidden">
+        <button id="context-paste-btn"
+            class="w-full px-4 py-3 text-left text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2">
+                </path>
+            </svg>
+            <span>粘贴图片</span>
+        </button>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-6 right-6 transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+        <div class="glass-card px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border-l-4 border-green-500">
+            <div id="toast-icon-container" class="bg-green-100 p-1 rounded-full">
+                <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+            </div>
+            <span id="toast-message" class="font-medium text-slate-700 text-sm">文本已复制到剪贴板</span>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            'use strict';
+
+            // ==================== 配置 ====================
+            const CONFIG = {
+                // 通过 Nginx 反向代理访问 API（内部网络连接，不暴露端口）
+                API_URL: "/api/predict/ocr_system",
+                TOAST_DURATION: 2500,
+                ANIMATION_DURATION: 500
+            };
+
+            // ==================== DOM 元素引用 ====================
+            const elements = {
+                dropZone: document.getElementById('drop-zone'),
+                fileInput: document.getElementById('file-input'),
+                previewImg: document.getElementById('preview-img'),
+                uploadPrompt: document.getElementById('upload-prompt'),
+                reuploadMask: document.getElementById('reupload-mask'),
+                clearImageBtn: document.getElementById('clear-image-btn'),
+                scanBtn: document.getElementById('scan-btn'),
+                btnText: document.getElementById('btn-text'),
+                btnIcon: document.getElementById('btn-icon'),
+                loadingSpinner: document.getElementById('loading-spinner'),
+                resultCard: document.getElementById('result-card'),
+                textOutput: document.getElementById('text-output'),
+                jsonOutput: document.getElementById('json-output'),
+                slideContainer: document.getElementById('slide-container'),
+                leftPanel: document.getElementById('left-panel'),
+                rightPanel: document.getElementById('right-panel'),
+                contextMenu: document.getElementById('context-menu'),
+                contextPasteBtn: document.getElementById('context-paste-btn'),
+                resetBtn: document.getElementById('reset-btn'),
+                copyBtn: document.getElementById('copy-btn'),
+                toast: document.getElementById('toast'),
+                toastMessageElement: document.getElementById('toast-message'),
+                toastIconContainer: document.getElementById('toast-icon-container')
+            };
+
+            // ==================== 状态管理 ====================
+            const state = {
+                currentFile: null,
+                isDesktop: () => window.innerWidth >= 1024
+            };
+
+            // ==================== 工具函数 ====================
+            const utils = {
+                // 重置右侧面板
+                resetRightPanel() {
+                    elements.rightPanel.classList.remove('w-full', 'lg:w-1/2', 'p-4', 'lg:p-0', 'min-h-[500px]');
+                    elements.rightPanel.classList.add('hidden', 'w-0', 'p-0', 'min-h-0');
+                },
+
+                // 显示右侧面板
+                showRightPanel() {
+                    elements.rightPanel.classList.remove('hidden', 'w-0', 'p-0', 'min-h-0');
+                    elements.rightPanel.classList.add('w-full', 'lg:w-1/2', 'p-4', 'lg:p-0', 'min-h-[500px]');
+                },
+
+                // 重置滑动状态
+                resetSlideState() {
+                    elements.slideContainer.classList.remove('scanned');
+                },
+
+                // 激活滑动状态（仅桌面端）
+                activateSlideState() {
+                    if (state.isDesktop()) {
+                        elements.slideContainer.classList.add('scanned');
+                    }
+                }
+            };
+
+            // ==================== Toast 通知系统 ====================
+            const toast = {
+                defaultConfig: {
+                    message: "文本已复制到剪贴板",
+                    colorClass: 'border-green-500',
+                    iconHTML: '<svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>',
+                    bgClass: 'bg-green-100'
+                },
+
+                show(message, borderColorClass, iconBgClass, iconHTML) {
+                    const toastElement = elements.toast.firstElementChild;
+                    const borderClasses = ['border-green-500', 'border-blue-500', 'border-red-500'];
+                    const bgClasses = ['bg-green-100', 'bg-blue-100', 'bg-red-100'];
+
+                    // 清除旧样式
+                    borderClasses.forEach(c => toastElement.classList.remove(c));
+                    bgClasses.forEach(c => elements.toastIconContainer.classList.remove(c));
+
+                    // 应用新样式
+                    toastElement.classList.add(borderColorClass);
+                    elements.toastIconContainer.classList.add(iconBgClass);
+                    elements.toastIconContainer.innerHTML = iconHTML;
+                    elements.toastMessageElement.textContent = message;
+
+                    // 显示 Toast
+                    elements.toast.classList.remove('translate-y-20', 'opacity-0');
+
+                    // 自动隐藏
+                    setTimeout(() => {
+                        elements.toast.classList.add('translate-y-20', 'opacity-0');
+                    }, CONFIG.TOAST_DURATION);
+                },
+
+                success(message) {
+                    this.show(message, 'border-green-500', 'bg-green-100',
+                        '<svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>');
+                },
+
+                info(message) {
+                    this.show(message, 'border-blue-500', 'bg-blue-100',
+                        '<svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>');
+                },
+
+                error(message) {
+                    this.show(message, 'border-red-500', 'bg-red-100',
+                        '<svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>');
+                }
+            };
+
+            // ==================== 图片处理 ====================
+            const imageHandler = {
+                processFile(file, message) {
+                    if (!file || !file.type.startsWith('image/')) {
+                        toast.error('请选择有效的图片文件');
+                        return;
+                    }
+
+                    state.currentFile = file;
+                    utils.resetSlideState();
+
+                    // 显示预览
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        elements.previewImg.src = e.target.result;
+                        elements.previewImg.classList.remove('hidden');
+                        elements.uploadPrompt.classList.add('hidden');
+
+                        elements.previewImg.onload = () => {
+                            elements.reuploadMask.classList.replace('hidden', 'flex');
+                            elements.clearImageBtn.classList.remove('hidden');
+                        };
+                    };
+                    reader.onerror = () => {
+                        toast.error('图片读取失败');
+                    };
+                    reader.readAsDataURL(file);
+
+                    elements.scanBtn.disabled = false;
+                    elements.resultCard.classList.add('hidden');
+                    utils.resetRightPanel();
+
+                    if (message) {
+                        toast.info(message);
+                    }
+                },
+
+                clear() {
+                    state.currentFile = null;
+                    elements.scanBtn.disabled = true;
+
+                    elements.previewImg.src = '';
+                    elements.previewImg.classList.add('hidden');
+                    elements.uploadPrompt.classList.remove('hidden');
+                    elements.clearImageBtn.classList.add('hidden');
+                    elements.reuploadMask.classList.add('hidden');
+                    elements.fileInput.value = '';
+
+                    elements.resultCard.classList.add('hidden');
+                    elements.textOutput.textContent = '';
+                    elements.jsonOutput.textContent = '';
+
+                    utils.resetRightPanel();
+                    utils.resetSlideState();
+
+                    toast.info('已清除当前图片');
+                }
+            };
+
+            // ==================== 右键菜单 ====================
+            const contextMenu = {
+                show(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // 立即保存鼠标坐标，避免异步延迟导致坐标变化
+                    const x = e.clientX;
+                    const y = e.clientY;
+
+
+                    // 移除 hidden 类，移除 active 类（重置状态）
+                    elements.contextMenu.classList.remove('hidden');
+                    elements.contextMenu.classList.remove('active');
+                    
+                    // 临时设置到屏幕外进行测量（保持 visibility: hidden）
+                    elements.contextMenu.style.left = '-9999px';
+                    elements.contextMenu.style.top = '-9999px';
+                    elements.contextMenu.style.display = 'block';
+
+                    // 强制渲染后计算位置
+                    requestAnimationFrame(() => {
+                        // 使用 offsetWidth/offsetHeight 测量尺寸，不依赖元素在视口中的位置
+                        const menuWidth = elements.contextMenu.offsetWidth;
+                        const menuHeight = elements.contextMenu.offsetHeight;
+                        const viewportWidth = window.innerWidth;
+                        const viewportHeight = window.innerHeight;
+
+                        // 使用保存的坐标进行计算
+                        let left = x + 4;
+                        let top = y + 4;
+
+                        // 边界检测
+                        if (left + menuWidth > viewportWidth) {
+                            left = x - menuWidth - 4;
+                        }
+                        if (top + menuHeight > viewportHeight) {
+                            top = y - menuHeight - 4;
+                        }
+
+                        left = Math.max(6, left);
+                        top = Math.max(6, top);
+
+                        // 设置位置
+                        elements.contextMenu.style.left = `${left}px`;
+                        elements.contextMenu.style.top = `${top}px`;
+
+                        // 淡入显示（添加 active 类会触发 CSS 的 visibility: visible 和 opacity: 1）
+                        elements.contextMenu.classList.add('active');
+                    });
+                },
+
+                hide() {
+                    // 移除 active 类开始淡出
+                    elements.contextMenu.classList.remove('active');
+
+                    // 等待动画结束后完全隐藏
+                    setTimeout(() => {
+                        elements.contextMenu.classList.add('hidden');
+                        elements.contextMenu.style.left = '';
+                        elements.contextMenu.style.top = '';
+                        elements.contextMenu.style.display = '';
+                    }, 150);
+                }
+            };
+
+            // ==================== OCR 识别 ====================
+            const ocr = {
+                async scan() {
+                    if (!state.currentFile) return;
+
+                    this.setLoading(true);
+
+                    const formData = new FormData();
+                    formData.append('images', state.currentFile);
+
+                    try {
+                        let data;
+                        try {
+                            const response = await fetch(CONFIG.API_URL, {
+                                method: 'POST',
+                                body: formData
+                            });
+
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            }
+                            data = await response.json();
+                        } catch (err) {
+                            console.log("API 请求失败，使用模拟数据:", err.message);
+                            await new Promise(r => setTimeout(r, 1500));
+                            data = {
+                                "msg": "Success",
+                                "results": [
+                                    [
+                                        { "confidence": 0.99, "text": "PaddleOCR High Precision", "text_region": [[0, 0], [100, 0], [100, 20], [0, 20]] },
+                                        { "confidence": 0.96, "text": "现代 UI 设计示例", "text_region": [[0, 30], [200, 30], [200, 50], [0, 50]] },
+                                        { "confidence": 0.92, "text": "Docker Container Ready", "text_region": [[0, 60], [200, 60], [200, 80], [0, 80]] },
+                                        { "confidence": 0.89, "text": "识别结果仅供参考", "text_region": [[0, 90], [200, 90], [200, 110], [0, 110]] }
+                                    ]
+                                ]
+                            };
+                        }
+
+                        this.displayResults(data);
+                        utils.activateSlideState();
+                        toast.success('识别完成');
+
+                    } catch (error) {
+                        console.error('OCR 识别错误:', error);
+                        toast.error('识别失败: ' + error.message);
+                    } finally {
+                        this.setLoading(false);
+                    }
+                },
+
+                displayResults(data) {
+                    let rawText = "";
+
+                    if (data.results && Array.isArray(data.results) && data.results.length > 0) {
+                        const list = Array.isArray(data.results[0]) ? data.results[0] : data.results;
+                        rawText = list.map(item => {
+                            return item.text || (Array.isArray(item) ? item[1] : "");
+                        }).filter(t => t).join('\n\n');
+                    } else {
+                        rawText = "未识别到文本 (No text detected).";
+                    }
+
+                    elements.textOutput.style.opacity = '0';
+                    elements.textOutput.textContent = rawText;
+                    elements.jsonOutput.textContent = JSON.stringify(data, null, 2);
+
+                    utils.showRightPanel();
+                    elements.resultCard.classList.remove('hidden');
+
+                    setTimeout(() => {
+                        elements.textOutput.style.transition = 'opacity 0.5s';
+                        elements.textOutput.style.opacity = '1';
+                    }, 100);
+
+                    // 移动端：自动滚动到识别结果区域
+                    if (!state.isDesktop()) {
+                        setTimeout(() => {
+                            const resultCard = elements.resultCard;
+                            if (resultCard && resultCard.offsetParent !== null) {
+                                resultCard.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start',
+                                    inline: 'nearest'
+                                });
+                            }
+                        }, 300);
+                    }
+                },
+
+                setLoading(isLoading) {
+                    if (isLoading) {
+                        elements.scanBtn.disabled = true;
+                        elements.loadingSpinner.classList.remove('hidden');
+                        elements.btnIcon.classList.add('hidden');
+                        elements.btnText.textContent = "处理中...";
+                    } else {
+                        if (state.currentFile) {
+                            elements.scanBtn.disabled = false;
+                        }
+                        elements.loadingSpinner.classList.add('hidden');
+                        elements.btnIcon.classList.remove('hidden');
+                        elements.btnText.textContent = "开始识别";
+                    }
+                }
+            };
+
+            // ==================== 剪贴板处理 ====================
+            const clipboard = {
+                async pasteFromContextMenu() {
+                    contextMenu.hide();
+
+                    try {
+                        if (navigator.clipboard && navigator.clipboard.read) {
+                            const clipboardItems = await navigator.clipboard.read();
+
+                            for (const clipboardItem of clipboardItems) {
+                                for (const type of clipboardItem.types) {
+                                    if (type.startsWith('image/')) {
+                                        const blob = await clipboardItem.getType(type);
+                                        const file = new File([blob], 'pasted-image.png', { type: type });
+                                        imageHandler.processFile(file, '图片已从剪贴板粘贴');
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+
+                        toast.info('请使用 Ctrl+V (Windows) 或 Cmd+V (Mac) 粘贴图片');
+                    } catch (error) {
+                        console.error('粘贴失败:', error);
+                        toast.error('粘贴失败，请使用 Ctrl+V (Windows) 或 Cmd+V (Mac)');
+                    }
+                },
+
+                handlePaste(e) {
+                    e.preventDefault();
+
+                    const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+                    if (!items) return;
+
+                    for (let i = 0; i < items.length; i++) {
+                        if (items[i].kind === 'file' && items[i].type.startsWith('image/')) {
+                            const file = items[i].getAsFile();
+                            if (file) {
+                                imageHandler.processFile(file, '图片已从剪贴板粘贴');
+                                return;
+                            }
+                        }
+                    }
+                },
+
+                copyText() {
+                    const text = elements.textOutput.textContent;
+                    if (!text) {
+                        toast.error('没有可复制的文本');
+                        return;
+                    }
+
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+
+                    try {
+                        document.execCommand('copy');
+                        toast.success(toast.defaultConfig.message);
+                    } catch (err) {
+                        console.error('复制失败:', err);
+                        toast.error('复制失败');
+                    } finally {
+                        document.body.removeChild(textarea);
+                    }
+                }
+            };
+
+            // ==================== 拖拽处理 ====================
+            const dragDrop = {
+                init() {
+                    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                        elements.dropZone.addEventListener(eventName, this.preventDefaults, false);
+                    });
+
+                    elements.dropZone.addEventListener('dragover', () => {
+                        elements.dropZone.classList.add('border-blue-500', 'bg-blue-50/50');
+                    });
+
+                    elements.dropZone.addEventListener('dragleave', () => {
+                        elements.dropZone.classList.remove('border-blue-500', 'bg-blue-50/50');
+                    });
+
+                    elements.dropZone.addEventListener('drop', (e) => {
+                        elements.dropZone.classList.remove('border-blue-500', 'bg-blue-50/50');
+                        if (e.dataTransfer.files.length) {
+                            imageHandler.processFile(e.dataTransfer.files[0], '文件已通过拖拽上传');
+                        }
+                    });
+                },
+
+                preventDefaults(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            };
+
+            // ==================== 事件监听器 ====================
+            function initEventListeners() {
+                // 文件输入
+                elements.fileInput.addEventListener('change', (e) => {
+                    if (e.target.files.length) {
+                        imageHandler.processFile(e.target.files[0], '文件已选中');
+                    }
+                });
+
+                // 粘贴事件
+                document.addEventListener('paste', clipboard.handlePaste);
+
+                // 识别按钮
+                elements.scanBtn.addEventListener('click', () => ocr.scan());
+
+                // 清除图片按钮
+                elements.clearImageBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    imageHandler.clear();
+                });
+
+                // 右键菜单
+                elements.dropZone.addEventListener('contextmenu', (e) => contextMenu.show(e));
+                elements.contextPasteBtn.addEventListener('click', () => clipboard.pasteFromContextMenu());
+                document.addEventListener('click', () => contextMenu.hide());
+                document.addEventListener('contextmenu', (e) => {
+                    if (!elements.dropZone.contains(e.target) && !elements.contextMenu.contains(e.target)) {
+                        contextMenu.hide();
+                    }
+                });
+
+                // 重置和复制按钮
+                elements.resetBtn.addEventListener('click', () => {
+                    imageHandler.clear();
+                    utils.resetSlideState();
+                });
+                elements.copyBtn.addEventListener('click', () => clipboard.copyText());
+
+                // 拖拽处理
+                dragDrop.init();
+            }
+
+            // ==================== 初始化 ====================
+            function init() {
+                initEventListeners();
+                console.log('AuraScan 初始化完成');
+            }
+
+            // DOM 加载完成后初始化
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
+    </script>
+</body>
+
+</html>

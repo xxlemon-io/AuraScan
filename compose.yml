@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # 1. OCR 后端服务 (PaddleOCR) - Hub Serving 模式
+  # 注意：此服务不暴露端口到宿主机，仅通过 Docker 内部网络访问
+  paddleocr-api:
+    # 这是一个社区常用的镜像，也推荐构建自己的
+    # 如果您需要GPU支持，请添加 deploy: resources: reservations: devices: ...
+    image: paddlepaddle/paddleocr:2.6-cpu 
+    container_name: paddleocr_api
+    # 使用 Hub Serving 模式启动服务，提供标准 HTTP API 接口
+    # -m ch_pp-ocrv3: 使用中文 OCR 模型 v3
+    # -p 8000: 服务端口（仅内部访问）
+    command: hub serving start -m ch_pp-ocrv3 -p 8000
+    # 不暴露端口到宿主机，仅通过 Docker 内部网络访问
+    expose:
+      - "8000"
+    restart: always
+  # 2. 前端界面 (Nginx)
+  # 仅此服务暴露端口到宿主机，前端通过 Nginx 反向代理访问内部 API
+  webapp:
+    image: nginx:alpine
+    container_name: paddleocr_ui
+    volumes:
+      # 将当前目录下的 index.html 挂载到 Nginx 默认目录
+      - ./index.html:/usr/share/nginx/html/index.html
+      # 挂载 Nginx 配置文件，配置反向代理
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - "54811:80"
+    depends_on:
+      - paddleocr-api
+    restart: always
